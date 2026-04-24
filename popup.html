@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FullSnap</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Design tokens ── */
+    :root {
+      --bg:            #07070d;
+      --glass:         rgba(255,255,255,0.045);
+      --glass-hover:   rgba(255,255,255,0.075);
+      --border:        rgba(255,255,255,0.07);
+      --border-hi:     rgba(255,255,255,0.13);
+      --accent:        #3b82f6;
+      --accent-dim:    rgba(59,130,246,0.15);
+      --accent-border: rgba(59,130,246,0.28);
+      --text:          #eeeef6;
+      --text-2:        #9595b8;
+      --muted:         #4e4e68;
+      --success:       #22c55e;
+      --danger:        #f87171;
+      --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+      --ease-fluid:    cubic-bezier(0.32, 0.72, 0, 1);
+    }
+
+    html, body {
+      width: 316px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont,
+                   'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient cobalt orb — top center */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -30px; left: 50%;
+      transform: translateX(-50%);
+      width: 260px; height: 100px;
+      background: radial-gradient(ellipse, rgba(59,130,246,0.13) 0%, transparent 72%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Header ── */
+    .header {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 15px 16px 13px;
+    }
+
+    /* Logo icon — double-bezel mark */
+    .logo-shell {
+      width: 34px; height: 34px;
+      border-radius: 10px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent-border);
+      padding: 2px;
+      flex-shrink: 0;
+      box-shadow: 0 0 14px rgba(59,130,246,0.12);
+    }
+    .logo-inner {
+      width: 100%; height: 100%;
+      border-radius: 8px;
+      background: rgba(59,130,246,0.1);
+      border: 1px solid rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+
+    .header-text { flex: 1; min-width: 0; }
+    .header-title {
+      font-size: 13.5px;
+      font-weight: 660;
+      letter-spacing: -0.35px;
+      color: #fff;
+    }
+    .header-sub {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 1px;
+      letter-spacing: 0.05px;
+    }
+
+    .header-badge {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-dim);
+      border: 1px solid rgba(59,130,246,0.22);
+      border-radius: 20px;
+      padding: 2.5px 7px;
+      flex-shrink: 0;
+    }
+
+    /* Gradient hairline separator */
+    .sep {
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, var(--border) 20%, var(--border) 80%, transparent 100%);
+      margin: 0 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Body ── */
+    .body {
+      padding: 13px 14px 15px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ──────────────────────────────────────────────
+       Primary CTA — Double-Bezel (Doppelrand)
+    ────────────────────────────────────────────── */
+    .capture-shell {
+      border-radius: 14px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(59,130,246,0.2);
+      padding: 3px;
+      box-shadow:
+        0 0 24px rgba(59,130,246,0.07),
+        0 1px 0 rgba(255,255,255,0.03),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+
+    #btn-capture {
+      width: 100%;
+      padding: 11px 12px;
+      background: linear-gradient(145deg, #2563eb 0%, #3b82f6 55%, #1d4ed8 100%);
+      color: #fff;
+      border: none;
+      border-radius: 11px;
+      font-size: 13px;
+      font-weight: 620;
+      letter-spacing: -0.25px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      transition: all 0.28s var(--ease-fluid);
+      outline: none;
+      font-family: inherit;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.22),
+        inset 0 -1px 0 rgba(0,0,0,0.14),
+        0 2px 8px rgba(37,99,235,0.2);
+    }
+
+    .btn-capture-left {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    /* Nested icon circle — the "button-in-button" pattern */
+    .btn-icon-nest {
+      width: 26px; height: 26px;
+      border-radius: 7px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid rgba(255,255,255,0.13);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: transform 0.32s var(--ease-spring);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+
+    .btn-arrow-nest {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.18);
+      border: 1px solid rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: transform 0.32s var(--ease-spring), background 0.2s;
+    }
+
+    #btn-capture:hover {
+      background: linear-gradient(145deg, #1d4ed8 0%, #2563eb 55%, #1e40af 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.22),
+        inset 0 -1px 0 rgba(0,0,0,0.2),
+        0 6px 20px rgba(37,99,235,0.28);
+    }
+    #btn-capture:hover .btn-icon-nest {
+      transform: scale(1.08) rotate(-5deg);
+    }
+    #btn-capture:hover .btn-arrow-nest {
+      transform: translate(2px, -1px) scale(1.1);
+      background: rgba(0,0,0,0.28);
+    }
+    #btn-capture:active { transform: scale(0.983); }
+    #btn-capture:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+    #btn-capture:disabled { opacity: 0.38; cursor: not-allowed; }
+
+    /* ── Options row ── */
+    .options-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 7px;
+    }
+
+    .opt-cell {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 9px;
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-fluid);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .opt-cell:hover {
+      background: var(--glass-hover);
+      border-color: var(--border-hi);
+    }
+
+    /* ── Custom toggle switch ── */
+    #chk-hide-ads {
+      position: absolute;
+      opacity: 0; width: 0; height: 0;
+      pointer-events: none;
+    }
+    .toggle-track {
+      width: 28px; height: 15px;
+      border-radius: 8px;
+      background: var(--muted);
+      border: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+      flex-shrink: 0;
+      transition: background 0.22s var(--ease-fluid), border-color 0.22s;
+      cursor: pointer;
+    }
+    .toggle-thumb {
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.75);
+      transition: transform 0.22s var(--ease-spring), background 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    #chk-hide-ads:checked ~ .toggle-track {
+      background: var(--accent);
+      border-color: rgba(59,130,246,0.35);
+    }
+    #chk-hide-ads:checked ~ .toggle-track .toggle-thumb {
+      transform: translateX(13px);
+      background: #fff;
+    }
+
+    .opt-label {
+      font-size: 11.5px;
+      color: var(--text-2);
+      letter-spacing: -0.1px;
+      white-space: nowrap;
+    }
+    .opt-cell:hover .opt-label { color: var(--text); }
+
+    /* Delay cell */
+    .delay-cell { padding-left: 8px; overflow: hidden; }
+    .delay-icon { flex-shrink: 0; color: var(--muted); }
+    #sel-delay {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-2);
+      font-size: 11.5px;
+      font-family: inherit;
+      cursor: pointer;
+      outline: none;
+      padding: 7px 4px 7px 0;
+      appearance: none;
+      -webkit-appearance: none;
+      min-width: 0;
+      letter-spacing: -0.1px;
+    }
+    #sel-delay option { background: #0d0d1a; color: var(--text); }
+    .delay-cell:hover #sel-delay { color: var(--text); }
+
+    /* ── Pick element button ── */
+    #btn-pick-element {
+      width: 100%;
+      margin-top: 6px;
+      padding: 9px 12px;
+      background: var(--glass);
+      color: var(--text-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 11.5px;
+      font-weight: 500;
+      letter-spacing: -0.1px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: all 0.2s var(--ease-fluid);
+      outline: none;
+      font-family: inherit;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    #btn-pick-element:hover {
+      color: var(--text);
+      border-color: var(--border-hi);
+      background: var(--glass-hover);
+    }
+    #btn-pick-element:active { transform: scale(0.983); }
+
+    /* ── Keyboard shortcut hint ── */
+    .shortcut-hint {
+      text-align: center;
+      color: var(--muted);
+      font-size: 10px;
+      margin-top: 11px;
+      letter-spacing: 0.05px;
+    }
+    .kbd {
+      display: inline-block;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-bottom: 1.5px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 9.5px;
+      font-family: -apple-system, system-ui, 'SF Mono', monospace;
+      color: var(--text-2);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    /* ──────────────────────────────────────────────
+       Capturing view
+    ────────────────────────────────────────────── */
+    #view-capturing { display: none; }
+
+    .capture-status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 8px;
+    }
+
+    .capture-label-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    /* Upgraded pulse indicator: ring + core */
+    .live-dot {
+      position: relative;
+      width: 10px; height: 10px;
+      flex-shrink: 0;
+    }
+    .live-dot-core {
+      position: absolute; inset: 2px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: livePulse 1.8s var(--ease-fluid) infinite;
+    }
+    .live-dot-ring {
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      border: 1.5px solid var(--accent);
+      opacity: 0;
+      animation: liveRipple 1.8s var(--ease-fluid) infinite;
+    }
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.55; transform: scale(0.72); }
+    }
+    @keyframes liveRipple {
+      0%   { opacity: 0.6; transform: scale(0.3); }
+      100% { opacity: 0; transform: scale(1.9); }
+    }
+
+    #progress-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #btn-stop {
+      background: rgba(248,113,113,0.07);
+      color: var(--danger);
+      border: 1px solid rgba(248,113,113,0.18);
+      border-radius: 20px;
+      padding: 3px 11px;
+      font-size: 10.5px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-fluid);
+      flex-shrink: 0;
+      letter-spacing: -0.05px;
+    }
+    #btn-stop:hover {
+      background: rgba(248,113,113,0.13);
+      border-color: rgba(248,113,113,0.38);
+    }
+    #btn-stop:active { transform: scale(0.96); }
+
+    /* Progress track — ultra-thin with shimmer */
+    .progress-track {
+      width: 100%;
+      height: 2px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 1px;
+      overflow: hidden;
+      position: relative;
+    }
+    #progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #2563eb, #60a5fa);
+      border-radius: 1px;
+      width: 0%;
+      transition: width 0.4s var(--ease-fluid);
+      position: relative;
+    }
+    #progress-fill::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+      animation: shimmer 1.4s ease-in-out infinite;
+      transform: translateX(-100%);
+    }
+    @keyframes shimmer {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(300%); }
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 7px;
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02px;
+    }
+    #progress-count { color: var(--text-2); }
+    #progress-eta   { color: var(--muted); }
+
+    /* ── Countdown ring ── */
+    #countdown-ring {
+      display: none;
+      margin: 4px auto 14px;
+      width: 64px; height: 64px;
+      position: relative;
+    }
+    #countdown-ring svg { transform: rotate(-90deg); }
+
+    #countdown-ring circle.track {
+      fill: none;
+      stroke: rgba(255,255,255,0.06);
+      stroke-width: 2.5;
+    }
+    #countdown-ring circle.fill {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 2.5;
+      stroke-dasharray: 138.2;  /* 2π × 22 — keep in sync with popup.js */
+      stroke-dashoffset: 138.2;
+      transition: stroke-dashoffset 0.9s linear;
+      stroke-linecap: round;
+      filter: drop-shadow(0 0 5px rgba(59,130,246,0.55));
+    }
+    #countdown-num {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -1.5px;
+    }
+
+    /* ── Done view ── */
+    #view-done {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 0 6px;
+    }
+
+    .done-ring-outer {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: rgba(34,197,94,0.08);
+      border: 1px solid rgba(34,197,94,0.25);
+      padding: 3px;
+      animation: popIn 0.5s var(--ease-spring);
+      box-shadow: 0 0 18px rgba(34,197,94,0.1);
+    }
+    .done-ring-inner {
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      background: rgba(34,197,94,0.12);
+      border: 1px solid rgba(34,197,94,0.3);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    @keyframes popIn {
+      from { transform: scale(0.35); opacity: 0; }
+      to   { transform: scale(1);    opacity: 1; }
+    }
+    .done-text {
+      font-weight: 650;
+      color: var(--success);
+      font-size: 13px;
+      letter-spacing: -0.25px;
+    }
+    .done-sub { color: var(--muted); font-size: 10.5px; }
+
+    /* ── Error view ── */
+    #view-error { display: none; flex-direction: column; gap: 10px; }
+
+    .error-title {
+      color: var(--danger);
+      font-weight: 620;
+      font-size: 12px;
+      letter-spacing: -0.15px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #error-msg {
+      color: var(--text-2);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    #btn-retry {
+      width: 100%;
+      padding: 9px;
+      background: var(--glass);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-fluid);
+      letter-spacing: -0.1px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    #btn-retry:hover {
+      background: var(--glass-hover);
+      border-color: var(--border-hi);
+    }
+    #btn-retry:active { transform: scale(0.985); }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ── -->
+  <div class="header">
+    <!-- Double-bezel logo mark -->
+    <div class="logo-shell">
+      <div class="logo-inner">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+      </div>
+    </div>
+    <div class="header-text">
+      <div class="header-title">FullSnap</div>
+      <div class="header-sub">Full-page capture</div>
+    </div>
+    <div class="header-badge">v1.1</div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="body">
+
+    <!-- ── Idle view ── -->
+    <div id="view-idle">
+
+      <!-- Primary button — double-bezel shell wraps the CTA -->
+      <div class="capture-shell">
+        <button id="btn-capture" autofocus>
+          <div class="btn-capture-left">
+            <div class="btn-icon-nest">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
+            Capture Full Page
+          </div>
+          <div class="btn-arrow-nest">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </div>
+        </button>
+      </div>
+
+      <!-- Options row -->
+      <div class="options-row">
+
+        <label class="opt-cell" for="chk-hide-ads">
+          <input type="checkbox" id="chk-hide-ads">
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          <span class="opt-label">Hide Ads</span>
+        </label>
+
+        <label class="opt-cell delay-cell" for="sel-delay">
+          <svg class="delay-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <select id="sel-delay">
+            <option value="0">No Delay</option>
+            <option value="3">3 seconds</option>
+            <option value="5">5 seconds</option>
+            <option value="10">10 seconds</option>
+          </select>
+        </label>
+
+      </div>
+
+      <button id="btn-pick-element">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 3l14 9-14 9V3z"/>
+        </svg>
+        Pick Scrollable Element
+      </button>
+
+      <p class="shortcut-hint">
+        <span class="kbd">Alt</span> + <span class="kbd">Shift</span> + <span class="kbd">P</span>
+      </p>
+    </div>
+
+    <!-- ── Capturing view ── -->
+    <div id="view-capturing">
+
+      <!-- Countdown ring (shown when delay > 0) -->
+      <div id="countdown-ring">
+        <svg width="64" height="64" viewBox="0 0 56 56">
+          <circle class="track" cx="28" cy="28" r="22"/>
+          <circle class="fill"  cx="28" cy="28" r="22" id="countdown-arc"/>
+        </svg>
+        <div id="countdown-num">5</div>
+      </div>
+
+      <div class="capture-status-row">
+        <div class="capture-label-group">
+          <div class="live-dot">
+            <div class="live-dot-core"></div>
+            <div class="live-dot-ring"></div>
+          </div>
+          <span id="progress-label">Preparing capture…</span>
+        </div>
+        <button id="btn-stop">Stop</button>
+      </div>
+
+      <div class="progress-track">
+        <div id="progress-fill"></div>
+      </div>
+      <div class="progress-meta">
+        <span id="progress-count"></span>
+        <span id="progress-eta"></span>
+      </div>
+
+    </div>
+
+    <!-- ── Done view ── -->
+    <div id="view-done">
+      <div class="done-ring-outer">
+        <div class="done-ring-inner">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+               stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+      </div>
+      <div class="done-text">Screenshot ready</div>
+      <div class="done-sub">Opening preview…</div>
+    </div>
+
+    <!-- ── Error view ── -->
+    <div id="view-error">
+      <div class="error-title">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        Capture failed
+      </div>
+      <div id="error-msg"></div>
+      <button id="btn-retry">Try Again</button>
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

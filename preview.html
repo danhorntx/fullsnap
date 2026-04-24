@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FullSnap – Preview</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Design Tokens ── */
+    :root {
+      --toolbar-h:     56px;
+      --bg:            #07070d;
+      --glass-bg:      rgba(7,7,13,0.84);
+      --surface:       rgba(255,255,255,0.045);
+      --surface-hover: rgba(255,255,255,0.072);
+      --border:        rgba(255,255,255,0.07);
+      --border-hi:     rgba(255,255,255,0.13);
+      --accent:        #3b82f6;
+      --accent-dim:    rgba(59,130,246,0.14);
+      --accent-border: rgba(59,130,246,0.28);
+      --text:          #eeeef6;
+      --text-2:        #8888aa;
+      --muted:         #47475e;
+      --success:       #22c55e;
+      --danger:        #f87171;
+      --ease-fluid:    cubic-bezier(0.32, 0.72, 0, 1);
+      --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+      --r:             8px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont,
+                   'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Subtle ambient radial behind canvas area */
+    body::before {
+      content: '';
+      position: fixed;
+      top: var(--toolbar-h);
+      left: 50%; transform: translateX(-50%);
+      width: 60vw; height: 40vh;
+      background: radial-gradient(ellipse, rgba(59,130,246,0.05) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ──────────────────────────────────────────────
+       Toolbar — glass morphism (fixed element only)
+    ────────────────────────────────────────────── */
+    #toolbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--toolbar-h);
+      background: var(--glass-bg);
+      backdrop-filter: blur(22px) saturate(160%);
+      -webkit-backdrop-filter: blur(22px) saturate(160%);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04), 0 4px 24px rgba(0,0,0,0.25);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 10px;
+      z-index: 100;
+    }
+
+    /* ── Logo ── */
+    #logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .logo-shell {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent-border);
+      padding: 1.5px;
+      box-shadow: 0 0 10px rgba(59,130,246,0.1);
+    }
+    .logo-inner {
+      width: 100%; height: 100%;
+      border-radius: 6px;
+      background: rgba(59,130,246,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+    .logo-name {
+      font-size: 13px;
+      font-weight: 660;
+      letter-spacing: -0.35px;
+      color: #fff;
+    }
+
+    /* Thin rule between logo and info */
+    .toolbar-rule {
+      width: 1px;
+      height: 18px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    /* ── Info text ── */
+    #info {
+      color: var(--text-2);
+      font-size: 11.5px;
+      letter-spacing: -0.1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* ──────────────────────────────────────────────
+       Unified toolbar button system
+    ────────────────────────────────────────────── */
+    #actions, #crop-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    #crop-toolbar-actions {
+      display: none; /* JS swaps to flex in crop mode */
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 11px;
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: rgba(238,238,246,0.78);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 500;
+      letter-spacing: -0.1px;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-fluid);
+      outline: none;
+      white-space: nowrap;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+    .btn:hover:not(:disabled) {
+      background: var(--surface-hover);
+      border-color: var(--border-hi);
+      color: var(--text);
+    }
+    .btn:active:not(:disabled) { transform: scale(0.96); }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* Primary — PDF */
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+      border-color: rgba(59,130,246,0.3);
+      color: #fff;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.18),
+        0 2px 8px rgba(37,99,235,0.18);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+      border-color: rgba(59,130,246,0.45);
+      color: #fff;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.18),
+        0 4px 16px rgba(37,99,235,0.28);
+    }
+
+    /* Crop active state */
+    .btn-active {
+      background: var(--accent-dim) !important;
+      border-color: rgba(59,130,246,0.32) !important;
+      color: #93c5fd !important;
+    }
+
+    /* Green confirm in crop toolbar */
+    #btn-crop-confirm {
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      border-color: rgba(34,197,94,0.3);
+      color: #fff;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 2px 8px rgba(22,163,74,0.14);
+    }
+    #btn-crop-confirm:hover:not(:disabled) {
+      background: linear-gradient(135deg, #15803d, #16a34a);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 14px rgba(22,163,74,0.22);
+    }
+
+    /* Thin spacer between button groups */
+    .toolbar-sep {
+      width: 1px; height: 20px;
+      background: var(--border);
+      flex-shrink: 0;
+      margin: 0 2px;
+    }
+
+    /* ── JPEG composite group ── */
+    .jpeg-group {
+      display: inline-flex;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+    #btn-jpeg {
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      padding: 6px 10px;
+    }
+    #btn-jpeg:hover:not(:disabled) { background: var(--surface-hover); }
+
+    .quality-sep {
+      width: 1px; height: 22px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .quality-wrap {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 10px;
+    }
+    #quality-label {
+      font-size: 10px;
+      color: var(--text-2);
+      white-space: nowrap;
+      min-width: 26px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Premium range slider */
+    #rng-quality {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 56px; height: 2px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 1px;
+      outline: none;
+      cursor: pointer;
+    }
+    #rng-quality::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(59,130,246,0.4);
+      transition: transform 0.15s var(--ease-spring), box-shadow 0.15s;
+    }
+    #rng-quality::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+      box-shadow: 0 0 10px rgba(59,130,246,0.55);
+    }
+    #rng-quality:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* ── Crop hint text ── */
+    #crop-toolbar-hint {
+      font-size: 11px;
+      color: var(--text-2);
+      white-space: nowrap;
+      margin-right: 8px;
+      letter-spacing: -0.05px;
+    }
+    #crop-toolbar-hint kbd {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-bottom: 1.5px solid rgba(255,255,255,0.18);
+      border-radius: 3px;
+      padding: 0 5px;
+      font-size: 9.5px;
+      font-family: inherit;
+      color: var(--text);
+    }
+
+    /* ──────────────────────────────────────────────
+       Main scroll area
+    ────────────────────────────────────────────── */
+    #main {
+      margin-top: var(--toolbar-h);
+      min-height: calc(100dvh - var(--toolbar-h));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 36px 28px 56px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ──────────────────────────────────────────────
+       Loading / status
+    ────────────────────────────────────────────── */
+    #status-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 100px 0;
+    }
+
+    /* Double-ring spinner */
+    .spinner-wrap {
+      position: relative;
+      width: 44px; height: 44px;
+    }
+    .spinner-outer {
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.06);
+      border-top-color: var(--accent);
+      animation: spinRing 1s linear infinite;
+    }
+    .spinner-inner {
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255,255,255,0.04);
+      border-top-color: rgba(59,130,246,0.45);
+      animation: spinRing 0.65s linear infinite reverse;
+    }
+    @keyframes spinRing { to { transform: rotate(360deg); } }
+
+    #status-msg {
+      color: var(--text-2);
+      font-size: 13.5px;
+      font-weight: 500;
+      letter-spacing: -0.2px;
+    }
+    #progress-bar-wrap {
+      width: 200px; height: 2px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    #progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #2563eb, #60a5fa);
+      transition: width 0.25s var(--ease-fluid);
+      width: 0%;
+      border-radius: 1px;
+    }
+
+    /* ──────────────────────────────────────────────
+       Canvas area
+    ────────────────────────────────────────────── */
+    #canvas-wrap {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      position: relative;
+    }
+
+    #canvas {
+      display: block;
+      max-width: 100%;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.06),
+        0 8px 32px rgba(0,0,0,0.42),
+        0 32px 80px rgba(0,0,0,0.28);
+    }
+
+    /* ──────────────────────────────────────────────
+       Crop overlay
+    ────────────────────────────────────────────── */
+    #crop-overlay {
+      display: none;
+      position: absolute;
+      cursor: crosshair;
+      border-radius: 10px;
+      overflow: hidden;
+      background: rgba(0,0,0,0.3);
+    }
+
+    /* Instruction badge */
+    #crop-instruction {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(7,7,13,0.92);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      padding: 16px 24px;
+      text-align: center;
+      pointer-events: none;
+      color: var(--text);
+      font-size: 12.5px;
+      line-height: 1.65;
+      white-space: nowrap;
+      box-shadow:
+        0 8px 32px rgba(0,0,0,0.5),
+        inset 0 1px 0 rgba(255,255,255,0.08);
+    }
+    #crop-instruction strong {
+      display: block;
+      font-size: 13.5px;
+      font-weight: 650;
+      margin-bottom: 5px;
+      color: #fff;
+      letter-spacing: -0.25px;
+    }
+    #crop-instruction kbd {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 10px;
+      font-family: inherit;
+    }
+
+    /* Selection rectangle */
+    #crop-selection {
+      display: none;
+      position: absolute;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.52);
+      outline: 1.5px solid rgba(255,255,255,0.88);
+      outline-offset: -1px;
+      box-sizing: border-box;
+      pointer-events: none;
+      border-radius: 1px;
+    }
+    #crop-dims {
+      position: absolute;
+      bottom: 7px; right: 9px;
+      font-size: 10px;
+      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+      font-variant-numeric: tabular-nums;
+      color: rgba(255,255,255,0.82);
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      pointer-events: none;
+      white-space: nowrap;
+      letter-spacing: -0.2px;
+    }
+
+    /* ──────────────────────────────────────────────
+       Toast
+    ────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 28px; left: 50%;
+      transform: translateX(-50%) translateY(14px);
+      background: rgba(14,14,22,0.94);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 9px 20px;
+      border-radius: 28px;
+      font-size: 12.5px;
+      font-weight: 500;
+      letter-spacing: -0.15px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s var(--ease-fluid), transform 0.22s var(--ease-fluid);
+      white-space: nowrap;
+      z-index: 200;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    #toast.show  { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #toast.success { border-color: rgba(34,197,94,0.3);   color: #86efac; }
+    #toast.error   { border-color: rgba(248,113,113,0.3); color: #fca5a5; }
+
+    /* ──────────────────────────────────────────────
+       Error state
+    ────────────────────────────────────────────── */
+    #error-wrap {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 100px 0;
+      text-align: center;
+    }
+
+    .error-icon-shell {
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      background: rgba(248,113,113,0.08);
+      border: 1px solid rgba(248,113,113,0.18);
+      padding: 3px;
+    }
+    .error-icon-inner {
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      background: rgba(248,113,113,0.1);
+      border: 1px solid rgba(248,113,113,0.16);
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    #error-msg {
+      color: var(--text-2);
+      font-size: 13px;
+      max-width: 360px;
+      line-height: 1.6;
+      letter-spacing: -0.1px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ──────────── Toolbar ──────────── -->
+  <div id="toolbar">
+
+    <!-- Double-bezel logo mark -->
+    <div id="logo">
+      <div class="logo-shell">
+        <div class="logo-inner">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+               stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+      </div>
+      <span class="logo-name">FullSnap</span>
+    </div>
+
+    <div class="toolbar-rule"></div>
+
+    <!-- Page info / dimensions -->
+    <div id="info"></div>
+
+    <!-- ── Normal export actions ── -->
+    <div id="actions">
+
+      <!-- Undo Crop — hidden until crop applied -->
+      <button class="btn" id="btn-undo-crop" style="display:none">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"/>
+          <path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+        </svg>
+        Undo
+      </button>
+
+      <div class="toolbar-sep"></div>
+
+      <button class="btn" id="btn-crop" disabled>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 2 6 8 2 8"/>
+          <polyline points="18 22 18 16 22 16"/>
+          <rect x="6" y="8" width="12" height="8" rx="1"/>
+        </svg>
+        Crop
+      </button>
+
+      <div class="toolbar-sep"></div>
+
+      <button class="btn" id="btn-copy" disabled>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        Copy
+      </button>
+
+      <button class="btn" id="btn-png" disabled>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        PNG
+      </button>
+
+      <!-- JPEG composite -->
+      <div class="jpeg-group">
+        <button class="btn" id="btn-jpeg" disabled>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          JPEG
+        </button>
+        <div class="quality-sep"></div>
+        <div class="quality-wrap">
+          <span id="quality-label">85%</span>
+          <input type="range" id="rng-quality" min="60" max="100" value="85" step="5" disabled title="JPEG quality" />
+        </div>
+      </div>
+
+      <!-- PDF — primary -->
+      <button class="btn btn-primary" id="btn-pdf" disabled>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        PDF
+      </button>
+
+    </div>
+
+    <!-- ── Crop mode actions (swapped in by JS) ── -->
+    <div id="crop-toolbar-actions">
+      <span id="crop-toolbar-hint">
+        Drag to select&nbsp;&nbsp;
+        <kbd>&#8629;</kbd> apply &nbsp;
+        <kbd>Esc</kbd> cancel
+      </span>
+      <button class="btn" id="btn-crop-confirm" disabled>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Apply Crop
+      </button>
+      <button class="btn" id="btn-crop-cancel">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+        Cancel
+      </button>
+    </div>
+
+  </div><!-- /toolbar -->
+
+  <!-- ──────────── Main scroll area ──────────── -->
+  <div id="main">
+
+    <!-- Loading state -->
+    <div id="status-wrap">
+      <div class="spinner-wrap">
+        <div class="spinner-outer"></div>
+        <div class="spinner-inner"></div>
+      </div>
+      <div id="status-msg">Loading screenshot data…</div>
+      <div id="progress-bar-wrap">
+        <div id="progress-bar"></div>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-wrap">
+      <div class="error-icon-shell">
+        <div class="error-icon-inner">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+               stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+      </div>
+      <div id="error-msg">An error occurred.</div>
+    </div>
+
+    <!-- Canvas area -->
+    <div id="canvas-wrap">
+      <canvas id="canvas"></canvas>
+
+      <!-- Crop overlay — positioned by preview.js relative to canvas-wrap -->
+      <div id="crop-overlay">
+        <div id="crop-instruction">
+          <strong>Crop Region</strong>
+          Drag to select &mdash; press
+          <kbd style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.13);
+               border-radius:3px;padding:0 5px;font-size:10px">Enter</kbd>
+          or click Apply Crop in the toolbar
+        </div>
+        <div id="crop-selection">
+          <span id="crop-dims"></span>
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- /main -->
+
+  <div id="toast"></div>
+
+  <script src="jspdf.umd.min.js"></script>
+  <script src="preview.js"></script>
+</body>
+</html>
