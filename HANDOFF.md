@@ -1,130 +1,215 @@
 # FullSnap — Developer Handoff
 
 **Version:** 1.1.0  
-**Last updated:** April 2026  
-**Extension folder:** `fullsnap-extension/`
+**GitHub:** https://github.com/danhorntx/fullsnap  
+**Owner:** danhorntx@gmail.com  
+**Last updated:** April 2026
+
+> Built across two Claude Cowork sessions. This document is the single source of truth for picking up development.
 
 ---
 
 ## What This Is
 
-FullSnap is a Chrome Extension (Manifest V3) that replicates GoFullPage's full-page screenshot functionality. It scrolls through a page capturing viewport-sized screenshots, stitches them together on a canvas, and presents a preview page with export options (PNG, JPEG, PDF, clipboard copy) and a crop tool.
+FullSnap is a Chrome Extension (Manifest V3) that replicates GoFullPage. It scrolls through a page capturing viewport-sized screenshots, stitches them together on a canvas with DPR-aware alignment correction, and opens a preview tab with export options (PNG, JPEG, PDF, clipboard) and a crop tool.
 
 ---
 
 ## File Map
 
-| File | Purpose |
-|------|---------|
-| `manifest.json` | MV3 manifest. Version 1.1.0. Permissions: activeTab, tabs, scripting, storage, unlimitedStorage. Keyboard shortcut: Alt+Shift+P |
-| `popup.html` | Extension popup UI |
-| `popup.js` | Popup logic — progress states, countdown ring animation, preference persistence |
-| `background.js` | Service worker — orchestrates capture, manages delay countdown, opens preview tab |
-| `content.js` | Injected into target tab — scrolls & captures, element picker mode |
-| `preview.html` | Preview page opened after capture |
-| `preview.js` | Preview logic — canvas stitching, crop tool, all exports |
-| `jspdf.umd.min.js` | Bundled jsPDF (no CDN dependency) |
-| `icons/` | Extension icons |
+```
+fullsnap-extension/
+├── manifest.json        MV3 manifest — permissions, shortcut, web_accessible_resources
+├── popup.html           Extension popup UI
+├── popup.js             Popup logic — state machine, countdown ring, progress, prefs
+├── background.js        Service worker — orchestrates capture, stores data, opens preview
+├── content.js           Injected into target tab — scrolls, captures, element picker
+├── preview.html         Preview page (new tab) — toolbar + canvas
+├── preview.js           Preview logic — stitching, crop tool, all exports
+├── jspdf.umd.min.js     Bundled jsPDF (no CDN)
+├── icons/               icon16/32/48/128.png
+└── HANDOFF.md           This file
+```
 
 ---
 
 ## Feature Summary
 
-### Popup
-- **Capture Full Page** — scrolls the active tab top-to-bottom, captures viewport-sized PNGs, stitches them
-- **Pick Scrollable Element** — user clicks any scrollable element (e.g. a chat panel, overflow div); that element is captured independently
-- **Hide Ads** — injects CSS to collapse common ad selectors before capture; persisted in `chrome.storage.local`
-- **Capture Delay** — dropdown: 0 / 3 / 5 / 10 seconds; triggers animated SVG countdown ring; persisted in `chrome.storage.local`
-- **Progress display** — section count, real-time ETA (measured from actual pace), phase labels
-- **Stop button** — cancels both active countdown and mid-capture scroll loop
+### Popup (`popup.html` + `popup.js`)
 
-### Preview Page
-Toolbar (always visible at top, fixed):
-- **Undo Crop** — hidden until a crop is applied; restores the original full-page view
-- **Crop** — enters crop mode; swaps export buttons for Apply Crop + Cancel in the toolbar
-- **Copy** — copies PNG to clipboard
-- **PNG** — downloads PNG
-- **JPEG** — downloads JPEG with white background compositing; quality slider (60–100%, step 5)
-- **PDF** — downloads PDF via jsPDF
+| Control | What it does |
+|---------|-------------|
+| **Capture Full Page** | Scrolls + captures the active tab top-to-bottom |
+| **Pick Scrollable Element** | User clicks any scrollable div; that element is captured independently |
+| **Hide Ads** | CSS injection collapses common ad selectors before capture. Persisted in `chrome.storage.local` |
+| **Capture Delay** | Dropdown: 0 / 3 / 5 / 10 s. Triggers animated SVG countdown ring. Persisted in `chrome.storage.local` |
+| **Progress display** | Section counter, real-time ETA (measured from actual pace), phase labels |
+| **Stop** | Cancels countdown OR mid-capture scroll loop |
+| **Keyboard shortcut** | Alt+Shift+P — fires `INITIATE_CAPTURE` via `chrome.commands` |
 
-Crop mode:
-- Dark overlay covers the canvas; user drags to select region
-- Pixel dimensions readout updates live in selection corner
-- Enter key = apply crop; Escape = cancel
-- Applying saves an OffscreenCanvas snapshot of the pre-crop state (only once — undo always returns to original full-page)
+Progress states the popup handles: `starting`, `countdown`, `selecting`, `loading`, `capturing`, `complete`, `error`.
+
+### Preview Page (`preview.html` + `preview.js`)
+
+Toolbar (always visible, fixed at top):
+
+| Button | Behavior |
+|--------|----------|
+| **Undo Crop** | Hidden until crop applied. Restores original full-page view from `OffscreenCanvas` snapshot |
+| **Crop** | Enters crop mode — swaps export buttons for Apply + Cancel in toolbar |
+| **Copy** | Copies canvas as PNG to clipboard |
+| **PNG** | Downloads PNG |
+| **JPEG** | Downloads JPEG with white background composite; quality slider 60–100% step 5 |
+| **PDF** | Downloads PDF via jsPDF |
+
+Crop mode: dark overlay, drag to select, live pixel readout. Enter = apply, Esc = cancel. All export buttons disabled while crop mode is open. Undo always restores original (snapshot saved only once, before first crop).
 
 ---
 
-## Architecture Notes
+## Architecture
 
-### Capture Flow
-1. Popup sends `INITIATE_CAPTURE` or `PICK_ELEMENT` to background
-2. Background optionally runs countdown (`runWithDelay`), then calls `initiateCapture` or `startElementPicker`
-3. Background injects `content.js` via `chrome.scripting.executeScript({ files: ['content.js'] })`
-4. Background calls `captureFullPage(opts)` or `startPickerMode(opts)` via `executeScript({ func, args })`
-5. Content script sends `CAPTURE_SCREENSHOT` messages to background for each viewport capture (`captureVisibleTab`)
-6. On completion, content script sends `CAPTURE_COMPLETE` with all screenshot dataURLs + pageInfo
-7. Background stores data in `captureStore` Map (keyed by timestamp), opens `preview.html?id=...`
-8. Preview page sends `GET_CAPTURE_DATA` to retrieve and delete its entry from the store
+### Message Flow
+
+```
+Popup  ──INITIATE_CAPTURE──►  background.js
+                                  │
+                           countdown (if delay > 0)
+                                  │
+                    chrome.scripting.executeScript(content.js)
+                                  │
+                    content.js: captureFullPage()
+                                  │
+                    ◄──CAPTURE_SCREENSHOT──  (captureVisibleTab per section)
+                                  │
+                    ◄──CAPTURE_PROGRESS──    (popup progress bar)
+                                  │
+                    ◄──CAPTURE_COMPLETE──    (all screenshots + pageInfo)
+                                  │
+                         captureStore.set(id, data)
+                         chrome.tabs.create(preview.html?id=...)
+                                  │
+                    preview.js: GET_CAPTURE_DATA
+                                  │
+                             stitch canvas
+```
 
 ### Progress Tracking
-- Background writes to `chrome.storage.session` (`fullsnapProgress`)
-- Popup watches via `chrome.storage.onChanged` — no polling needed
-- On popup open, existing progress is read from session storage to resume in-flight display
 
-### Canvas Stitching (preview.js)
-- `capturedDpr` is derived from `firstImg.width / vpWidth` (physical pixels vs CSS pixels)
-- Each screenshot is placed at `scrollY * capturedDpr` physical pixels on the canvas
-- **Alignment correction**: Before placing each frame, samples the middle-60% overlap zone (last 16× DPR pixels of the previous frame / first 16× DPR pixels of the new frame). Searches ±12 physical pixels for the offset that minimizes pixel diff (capped at 150 per channel to suppress parallax outliers). Corrects scroll drift by up to ±12px.
-- **Canvas height cap**: Canvas height is capped to `(lastShot.scrollY + vpHeight) * capturedDpr` to prevent blank whitespace at the bottom when the page shrank mid-capture (e.g. after hiding ads)
-- **Element capture**: When `pageInfo.cropX/Y/W/H` are present, each frame is drawn using `ctx.drawImage(img, cropX, cropY, cropW, drawH, 0, destYPhys, canvasW, drawH)` to extract only the element's region
+Background writes to `chrome.storage.session` (`fullsnapProgress`). Popup reads on open + watches via `chrome.storage.onChanged`. No polling.
 
-### Key Gotchas
+### Canvas Stitching (`preview.js → stitch()`)
 
-**`var` vs `const` in content.js top-level**  
-`content.js` can be injected multiple times into the same tab (e.g. element picker after a full-page capture). `const` at the top level of a script throws `SyntaxError: Identifier has already been declared` on re-injection. All top-level declarations in `content.js` that might conflict use `var`. Function declarations are safe (idempotent).
-
-**`captureVisibleTab` rate limit**  
-Chrome enforces ~2 captures/second. `captureIntervalMs` is set to 550ms minimum between captures.
-
-**Service worker lifecycle**  
-A `setInterval` keep-alive pings `chrome.runtime.getPlatformInfo` every 20 seconds during capture to prevent the service worker from being suspended mid-capture.
-
-**CSS parallax**  
-`background-attachment: scroll !important` is injected before capture to freeze CSS parallax. JS parallax is handled by `waitForPaint` (double `requestAnimationFrame` + `setTimeout`) after each scroll step.
-
-**Fixed/sticky elements (e.g. NYTimes navbar)**  
-A two-pass pre-scroll analysis detects elements whose `position` is `fixed` or `sticky`. These are temporarily set to `visibility: hidden` before each capture frame and restored after.
-
-**Wired.com image stitching**  
-Overlap zone increased to 16× DPR pixels (was 8×). Alignment search window is ±12px (was ±8px). Comparison strip is 80 rows (was 64). This handles aggressive lazy-loading where images pop in slightly late at scroll boundaries.
+1. `capturedDpr = firstImg.width / vpWidth` — derives physical pixel ratio from actual image
+2. Each screenshot placed at `scrollY * capturedDpr` physical pixels on the canvas
+3. **Alignment correction** — before placing each frame, samples the middle-60% of the overlap zone (last `16 × DPR` px of previous / first `16 × DPR` px of new). Searches ±12 physical pixels for minimum pixel diff (capped at 150 per channel to suppress parallax outliers). Corrects accumulated scroll drift.
+4. **Canvas height cap** — capped to `(lastShot.scrollY + vpHeight) × capturedDpr` to prevent blank whitespace when page shrank mid-capture (e.g. after hiding ads)
+5. **Element capture** — when `pageInfo.cropX/Y/W/H` present, uses `ctx.drawImage(img, cropX, cropY, cropW, drawH, ...)` to extract only the element's region from each full-viewport screenshot
 
 ---
 
-## Known Limitations / Potential Next Work
+## Critical Gotchas
 
-- Element picker uses full-viewport capture + crop extraction. It does not resize the viewport, so captured content width = full page width (the element's left offset is cropped away). This is fine for most use cases but may look odd for very narrow elements.
-- Very tall pages (50,000+ px) can approach canvas size limits on some systems. No chunking/tiling is currently implemented.
-- PDF export via jsPDF is single-image-per-page — very tall screenshots result in a very tall single page rather than paginated output.
-- JPEG export composites onto a white background canvas before encoding (PNGs with transparency would otherwise get a black fill).
-- Wired.com stitching is improved but may still show minor misaligns on certain scroll positions due to aggressive JS animation on article images.
+### `var` vs `const` in `content.js`
+`content.js` can be injected multiple times into the same tab (e.g. element picker after a full-page capture). `const` at top level throws `SyntaxError: Identifier has already been declared` on re-injection. **All top-level declarations use `var`.** Function declarations are idempotent and safe.
+
+### `captureVisibleTab` rate limit
+Chrome enforces ~2 captures/second. Minimum gap between captures is `captureIntervalMs = 550ms`. Do not lower this — it causes silent capture failures on some machines.
+
+### Service worker keep-alive
+A `setInterval` pings `chrome.runtime.getPlatformInfo` every 20 seconds during capture to prevent the service worker from being suspended mid-scroll. Started in `startKeepAlive()`, stopped in `stopKeepAlive()`.
+
+### CSS parallax
+`background-attachment: scroll !important` injected before capture freezes CSS parallax backgrounds. JS parallax settled with `waitForPaint()` = double `requestAnimationFrame` + `setTimeout(0)` after each scroll step.
+
+### Fixed/sticky elements (NYTimes-style navbars)
+Two-pass pre-scroll analysis detects `position: fixed/sticky` elements. They are set to `visibility: hidden` before each frame capture and restored after. If the count of fixed elements changes between passes, `perFrameFixedHide = true` is set, meaning re-hiding happens every single frame.
+
+### Canvas height cap (NYTimes blank space bug)
+When Hide Ads collapses containers, `scrollHeight` shrinks but scroll positions had been calculated against the original larger height. Extra frames at the bottom all capture the same final position → white space. Fixed in two places: (1) `content.js` uses current height only (not max) when `hideAds` is true; (2) `preview.js` caps canvas to `lastShot.scrollY + vpHeight`.
+
+### Undo Crop memory
+Uses `OffscreenCanvas` (raw bitmap) rather than `canvas.toDataURL()` (base64). Snapshot taken only once before the first crop — subsequent crops do not overwrite it, so undo always returns to the original full-page view.
+
+### `backdrop-filter` placement
+`backdrop-filter: blur(22px)` is applied only to `#toolbar` (a `position: fixed` element). It is **never** applied to scrolling containers — doing so causes continuous GPU repaints on mobile.
 
 ---
 
-## How to Load the Extension
+## Design System
 
-1. Open `chrome://extensions`
+Both `popup.html` and `preview.html` share a consistent visual language. Do not break these without updating both.
+
+| Token | Value |
+|-------|-------|
+| Background | `#07070d` — OLED near-black |
+| Glass surface | `rgba(255,255,255,0.045)` |
+| Glass hover | `rgba(255,255,255,0.072)` |
+| Border | `rgba(255,255,255,0.07)` |
+| Border highlight | `rgba(255,255,255,0.13)` |
+| Accent | `#3b82f6` — electric cobalt |
+| Accent dim | `rgba(59,130,246,0.14)` |
+| Text primary | `#eeeef6` |
+| Text secondary | `#8888aa` |
+| Muted | `#47475e` |
+| Success | `#22c55e` |
+| Danger | `#f87171` |
+| Ease fluid | `cubic-bezier(0.32, 0.72, 0, 1)` |
+| Ease spring | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
+| Font stack | `'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif` |
+
+**Key patterns:**
+- **Double-Bezel (Doppelrand)** — major interactive containers use an outer shell (accent-tinted, hairline border, 3px padding) wrapping an inner core (gradient, inner highlight shadow). Applied to the popup CTA button and the logo mark.
+- **Button-in-Button** — primary CTAs contain a nested icon square (left) and a nested arrow circle (right), both with their own background + border.
+- **Toolbar glass** — `backdrop-filter` on the fixed preview toolbar only. Never on scrolling content.
+- **All transitions** — custom cubic-bezier only. No `linear` or `ease-in-out`.
+
+---
+
+## Git Workflow Note
+
+The mounted workspace volume (`/mnt/...`) has filesystem restrictions that block git's internal locking. **To commit and push from a Cowork session:**
+
+```bash
+# Copy changed files to temp
+cp -r "/path/to/fullsnap-extension" /tmp/fullsnap
+rm -rf /tmp/fullsnap/.git   # strip any stale .git copy
+
+# Init fresh, commit, push
+cd /tmp/fullsnap
+git init && git config user.name "danhorntx" && git config user.email "danhorntx@gmail.com"
+git branch -m main
+git remote add origin https://danhorntx:TOKEN@github.com/danhorntx/fullsnap.git
+git add . && git commit -m "your message"
+git push origin main
+```
+
+---
+
+## Known Limitations / Next Work
+
+| Area | Issue |
+|------|-------|
+| Wired.com stitching | Overlap increased to 16×DPR, search ±12px, strip 80 rows. Still possible minor misalign on very aggressive JS animations at scroll boundaries |
+| Element picker width | Captures full viewport + crops element region. Narrow elements capture full-width background — not wrong, just occasionally unexpected |
+| Very tall pages | No canvas chunking/tiling. Pages above ~50,000px may hit browser canvas size limits on some systems |
+| PDF pagination | jsPDF single-image-per-page. A 10,000px page produces one extremely tall PDF page rather than paginated output |
+| Wired lazy-load | Two-pass pre-scroll triggers `IntersectionObserver` lazy-loaders. Most load correctly; edge case exists if a section lazy-loads during the capture pass (not pre-scroll pass) |
+
+---
+
+## Loading the Extension
+
+1. Go to `chrome://extensions`
 2. Enable **Developer mode** (toggle, top right)
-3. Click **Load unpacked**
-4. Select the `fullsnap-extension/` folder
-5. The FullSnap icon appears in the toolbar
+3. **Load unpacked** → select the `fullsnap-extension/` folder
+4. The FullSnap icon appears in the toolbar
 
-To reload after code changes: click the refresh icon on the extension card in `chrome://extensions`.
+To reload after code changes: click the refresh ↺ icon on the extension card.
 
 ---
 
 ## Resuming Development
 
-Read `content.js` and `preview.js` first — they contain the most logic. Both files are long (~700–900 lines each). Key sections are marked with `// ──` comment banners.
+Read `content.js` and `preview.js` first — they contain the bulk of the logic (~700–900 lines each). Key sections are marked with `// ──` comment banners for navigation.
 
-The summary in this file and the session transcript should be enough to get oriented. If you need the full session transcript with all diffs and error messages, it was generated in a Claude Cowork session (April 2026).
+The full session transcripts with all diffs and decisions are stored locally in the Claude Cowork session directory if deeper context is needed.
